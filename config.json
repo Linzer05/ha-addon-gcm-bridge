@@ -5,7 +5,6 @@
   "description": "Receives GCM500 HTTP data and publishes to MQTT",
   "arch": ["amd64", "armv7", "arm64", "aarch64"],
   "startup": "before",
-  "boot": "auto",
   "host_network": true,
   "ports": {
     "80/tcp": 80
@@ -16,4 +15,5 @@
   "image": "local/gcm_bridge",
   "homeassistant": "2026.1.0"
 }
+
 
