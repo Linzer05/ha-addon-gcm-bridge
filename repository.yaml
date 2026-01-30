@@ -1,3 +1,5 @@
-name: GCM Bridge Add-ons
-url: https://github.com/Linzer05/ha-addon-gcm-bridge
-maintainer: Linzer05
+{
+ name: GCM Bridge Add-ons
+ url: https://github.com/Linzer05/ha-addon-gcm-bridge
+ maintainer: Linzer05
+}
