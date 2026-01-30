@@ -7,7 +7,9 @@ import paho.mqtt.client as mqtt
 # Konfiguration
 # =====================
 MQTT_HOST = os.getenv("MQTT_HOST", "homeassistant")
-MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
+MQTT_USER = os.getenv("MQTT_USER", "mqtt")          # Benutzername für Broker
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "mqtt")  # Passwort für Broker
 
 BASE_TOPIC = "gmc500"
 DEVICE_ID = "gmc500"
@@ -31,6 +33,9 @@ client = mqtt.Client(
     callback_api_version=mqtt.CallbackAPIVersion.VERSION2
 )
 
+# Benutzername / Passwort
+client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+
 # Last Will (falls Add-on abstürzt)
 client.will_set(
     AVAILABILITY_TOPIC,
@@ -47,7 +52,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
         print("MQTT connected")
         # sofort online Status senden
         client.publish(AVAILABILITY_TOPIC, "online", retain=True)
-        # sofort Discovery senden, damit Sensoren direkt sichtbar sind
+        # sofort Discovery senden
         publish_discovery()
     else:
         print(f"MQTT connection failed: {reason_code}")
