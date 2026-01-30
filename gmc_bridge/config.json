@@ -3,23 +3,26 @@
   "version": "1.0.0",
   "slug": "gmc_bridge",
   "description": "Receives GMC500 HTTP data and publishes to MQTT",
-  "arch": ["amd64", "armhf", "armv7", "aarch64", "i386"],
+  "arch": ["amd64", "armv7", "aarch64"],
   "startup": "services",
   "boot": "auto",
   "host_network": true,
   "ports": {
     "80/tcp": 80
   },
-  "map": [],
   "options": {
-    "mqtt_host": "core-mosquitto",
+    "mqtt_host": "homeassistant",
     "mqtt_port": 1883,
+    "mqtt_user": "",
+    "mqtt_password": "",
     "mqtt_topic": "gmc500/data"
   },
   "schema": {
     "mqtt_host": "str",
     "mqtt_port": "int",
+    "mqtt_user": "str",
+    "mqtt_password": "str",
     "mqtt_topic": "str"
   },
-  "homeassistant": ">=2026.1.0"
+  "homeassistant": "2026.1.0"
 }
