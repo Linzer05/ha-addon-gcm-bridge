@@ -1,47 +1,61 @@
-from flask import Flask, request
-import paho.mqtt.client as mqtt
 import json
 import os
-import threading
-from waitress import serve
+from flask import Flask, request, jsonify
+import paho.mqtt.client as mqtt
 
-# ===============================
-# MQTT KONFIGURATION (HA-Official)
-# ===============================
-MQTT_HOST = os.getenv("MQTT_HOST", "core-mosquitto")
-MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
+# =====================
+# Konfiguration
+# =====================
+MQTT_HOST = os.getenv("MQTT_HOST", "homeassistant")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
 BASE_TOPIC = "gmc500"
 DISCOVERY_PREFIX = "homeassistant"
 
 DEVICE_ID = "gmc500"
-DEVICE_NAME = "GMC500 Geiger Counter"
+DEVICE_NAME = "GMC 500 Geiger Counter"
 
-# ===============================
-# FLASK APP
-# ===============================
+AVAILABILITY_TOPIC = f"{BASE_TOPIC}/status"
+
+# =====================
+# Flask App
+# =====================
 app = Flask(__name__)
 
-# ===============================
-# MQTT CLIENT
-# ===============================
-client = mqtt.Client(protocol=mqtt.MQTTv311)
+# =====================
+# MQTT Client (API v2)
+# =====================
+client = mqtt.Client(
+    protocol=mqtt.MQTTv311,
+    callback_api_version=mqtt.CallbackAPIVersion.VERSION2
+)
 
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
+client.will_set(
+    AVAILABILITY_TOPIC,
+    payload="offline",
+    qos=1,
+    retain=True
+)
+
+# =====================
+# MQTT Callbacks
+# =====================
+def on_connect(client, userdata, flags, reason_code, properties):
+    if reason_code == 0:
         print("MQTT connected")
+        client.publish(AVAILABILITY_TOPIC, "online", retain=True)
         publish_discovery()
     else:
-        print(f"MQTT connection failed: {rc}")
+        print(f"MQTT connection failed: {reason_code}")
 
 client.on_connect = on_connect
 
-client.connect(MQTT_HOST, MQTT_PORT, 60)
+client.connect(MQTT_HOST, MQTT_PORT)
 client.loop_start()
 
-# ===============================
-# MQTT AUTO DISCOVERY
-# ===============================
+# =====================
+# Home Assistant Discovery
+# =====================
 def publish_discovery():
     sensors = {
         "cpm": {
@@ -51,19 +65,19 @@ def publish_discovery():
             "topic": f"{BASE_TOPIC}/cpm"
         },
         "acpm": {
-            "name": "ACPM",
+            "name": "Avg CPM",
             "unit": "CPM",
-            "icon": "mdi:radioactive",
+            "icon": "mdi:chart-line",
             "topic": f"{BASE_TOPIC}/acpm"
         },
         "usv": {
-            "name": "Radiation",
+            "name": "µSv/h",
             "unit": "µSv/h",
-            "icon": "mdi:radioactive",
+            "icon": "mdi:radioactive-circle",
             "topic": f"{BASE_TOPIC}/usv"
         },
         "dose": {
-            "name": "Total Dose",
+            "name": "Dose",
             "unit": "µSv",
             "icon": "mdi:counter",
             "topic": f"{BASE_TOPIC}/dose"
@@ -71,47 +85,56 @@ def publish_discovery():
     }
 
     for key, s in sensors.items():
+        discovery_topic = (
+            f"{DISCOVERY_PREFIX}/sensor/{DEVICE_ID}/{key}/config"
+        )
+
         payload = {
             "name": f"{DEVICE_NAME} {s['name']}",
             "state_topic": s["topic"],
+            "availability_topic": AVAILABILITY_TOPIC,
+            "payload_available": "online",
+            "payload_not_available": "offline",
             "unit_of_measurement": s["unit"],
             "icon": s["icon"],
             "unique_id": f"{DEVICE_ID}_{key}",
-            "state_class": "measurement" if key != "dose" else "total_increasing",
-            "device_class": "radiation" if key in ["cpm", "acpm", "usv"] else None,
+            "state_class": (
+                "total_increasing" if key == "dose" else "measurement"
+            ),
             "device": {
                 "identifiers": [DEVICE_ID],
                 "name": DEVICE_NAME,
                 "manufacturer": "GMC",
-                "model": "GMC500"
+                "model": "GMC-500"
             }
         }
 
-        topic = f"{DISCOVERY_PREFIX}/sensor/{DEVICE_ID}/{key}/config"
-        client.publish(topic, json.dumps(payload), retain=True)
+        client.publish(
+            discovery_topic,
+            json.dumps(payload),
+            retain=True
+        )
 
-# ===============================
-# GMC ENDPOINT
-# ===============================
-@app.route("/gmc", methods=["GET"], strict_slashes=False)
-@app.route("/gmc/", methods=["GET"], strict_slashes=False)
+# =====================
+# HTTP Endpoint
+# =====================
+@app.route("/gmc", methods=["GET"])
 def gmc():
-    data = request.args
+    args = request.args
 
-    if "CPM" in data:
-        client.publish(f"{BASE_TOPIC}/cpm", data["CPM"])
-    if "ACPM" in data:
-        client.publish(f"{BASE_TOPIC}/acpm", data["ACPM"])
-    if "uSV" in data:
-        client.publish(f"{BASE_TOPIC}/usv", data["uSV"])
-    if "dose" in data:
-        client.publish(f"{BASE_TOPIC}/dose", data["dose"])
+    if "CPM" in args:
+        client.publish(f"{BASE_TOPIC}/cpm", args["CPM"])
+    if "ACPM" in args:
+        client.publish(f"{BASE_TOPIC}/acpm", args["ACPM"])
+    if "uSV" in args:
+        client.publish(f"{BASE_TOPIC}/usv", args["uSV"])
+    if "dose" in args:
+        client.publish(f"{BASE_TOPIC}/dose", args["dose"])
 
-    return "OK", 200
+    return jsonify({"status": "ok"}), 200
 
-# ===============================
-# START SERVER (PRODUCTION SAFE)
-# ===============================
+# =====================
+# Main
+# =====================
 if __name__ == "__main__":
-    print("GMC Bridge started")
-    serve(app, host="0.0.0.0", port=80)
+    app.run(host="0.0.0.0", port=80)
