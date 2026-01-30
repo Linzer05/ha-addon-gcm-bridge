@@ -10,10 +10,11 @@ MQTT_HOST = os.getenv("MQTT_HOST", "homeassistant")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
 BASE_TOPIC = "gmc500"
-DISCOVERY_PREFIX = "homeassistant"
-
 DEVICE_ID = "gmc500"
 DEVICE_NAME = "GMC 500 Geiger Counter"
+
+# Home Assistant Auto-Discovery Prefix
+DISCOVERY_PREFIX = "homeassistant"
 
 AVAILABILITY_TOPIC = f"{BASE_TOPIC}/status"
 
@@ -23,13 +24,14 @@ AVAILABILITY_TOPIC = f"{BASE_TOPIC}/status"
 app = Flask(__name__)
 
 # =====================
-# MQTT Client (API v2)
+# MQTT Client (Callback API v2)
 # =====================
 client = mqtt.Client(
     protocol=mqtt.MQTTv311,
     callback_api_version=mqtt.CallbackAPIVersion.VERSION2
 )
 
+# Last Will (falls Add-on abstürzt)
 client.will_set(
     AVAILABILITY_TOPIC,
     payload="offline",
@@ -43,13 +45,16 @@ client.will_set(
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
         print("MQTT connected")
+        # sofort online Status senden
         client.publish(AVAILABILITY_TOPIC, "online", retain=True)
+        # sofort Discovery senden, damit Sensoren direkt sichtbar sind
         publish_discovery()
     else:
         print(f"MQTT connection failed: {reason_code}")
 
 client.on_connect = on_connect
 
+# Verbindung starten
 client.connect(MQTT_HOST, MQTT_PORT)
 client.loop_start()
 
@@ -85,9 +90,7 @@ def publish_discovery():
     }
 
     for key, s in sensors.items():
-        discovery_topic = (
-            f"{DISCOVERY_PREFIX}/sensor/{DEVICE_ID}/{key}/config"
-        )
+        discovery_topic = f"{DISCOVERY_PREFIX}/sensor/{DEVICE_ID}/{key}/config"
 
         payload = {
             "name": f"{DEVICE_NAME} {s['name']}",
@@ -98,9 +101,7 @@ def publish_discovery():
             "unit_of_measurement": s["unit"],
             "icon": s["icon"],
             "unique_id": f"{DEVICE_ID}_{key}",
-            "state_class": (
-                "total_increasing" if key == "dose" else "measurement"
-            ),
+            "state_class": "total_increasing" if key == "dose" else "measurement",
             "device": {
                 "identifiers": [DEVICE_ID],
                 "name": DEVICE_NAME,
@@ -116,7 +117,7 @@ def publish_discovery():
         )
 
 # =====================
-# HTTP Endpoint
+# HTTP Endpoint /gmc
 # =====================
 @app.route("/gmc", methods=["GET"])
 def gmc():
