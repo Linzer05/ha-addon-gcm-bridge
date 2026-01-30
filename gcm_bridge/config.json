@@ -1,8 +1,8 @@
 {
-  "name": "GCM500 MQTT Bridge",
+  "name": "GMC500 MQTT Bridge",
   "version": "1.0.0",
-  "slug": "gcm_bridge",
-  "description": "Receives GCM500 HTTP data and publishes to MQTT",
+  "slug": "gmc_bridge",
+  "description": "Receives GMC500 HTTP data and publishes to MQTT",
   "arch": ["amd64", "armv7", "arm64", "aarch64"],
   "startup": "before",
   "boot": "auto",
@@ -15,5 +15,6 @@
   "schema": {},
   "homeassistant": "2026.1.0"
 }
+
 
 
