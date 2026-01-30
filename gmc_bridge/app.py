@@ -4,14 +4,14 @@ from flask import Flask, request, jsonify
 import paho.mqtt.client as mqtt
 
 # =====================
-# Konfiguration
+# Add-on Options / Konfiguration
 # =====================
-MQTT_HOST = os.getenv("MQTT_HOST", "homeassistant")
-MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
-MQTT_USER = os.getenv("MQTT_USER", "mqtt")          # Benutzername für Broker
-MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "mqtt")  # Passwort für Broker
+MQTT_HOST = os.getenv("ADDON_OPTION_MQTT_HOST", "homeassistant")
+MQTT_PORT = int(os.getenv("ADDON_OPTION_MQTT_PORT", 1883))
+MQTT_USER = os.getenv("ADDON_OPTION_MQTT_USER", "")
+MQTT_PASSWORD = os.getenv("ADDON_OPTION_MQTT_PASSWORD", "")
+BASE_TOPIC = os.getenv("ADDON_OPTION_MQTT_TOPIC", "gmc500/data")
 
-BASE_TOPIC = "gmc500"
 DEVICE_ID = "gmc500"
 DEVICE_NAME = "GMC 500 Geiger Counter"
 
@@ -33,10 +33,11 @@ client = mqtt.Client(
     callback_api_version=mqtt.CallbackAPIVersion.VERSION2
 )
 
-# Benutzername / Passwort
-client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+# Benutzername / Passwort falls gesetzt
+if MQTT_USER and MQTT_PASSWORD:
+    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
 
-# Last Will (falls Add-on abstürzt)
+# Last Will / Availability
 client.will_set(
     AVAILABILITY_TOPIC,
     payload="offline",
@@ -49,17 +50,15 @@ client.will_set(
 # =====================
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
-        print("MQTT connected")
-        # sofort online Status senden
+        print(f"Connected to MQTT broker at {MQTT_HOST}:{MQTT_PORT}")
         client.publish(AVAILABILITY_TOPIC, "online", retain=True)
-        # sofort Discovery senden
         publish_discovery()
     else:
         print(f"MQTT connection failed: {reason_code}")
 
 client.on_connect = on_connect
 
-# Verbindung starten
+# Connect starten
 client.connect(MQTT_HOST, MQTT_PORT)
 client.loop_start()
 
@@ -115,11 +114,7 @@ def publish_discovery():
             }
         }
 
-        client.publish(
-            discovery_topic,
-            json.dumps(payload),
-            retain=True
-        )
+        client.publish(discovery_topic, json.dumps(payload), retain=True)
 
 # =====================
 # HTTP Endpoint /gmc
@@ -129,13 +124,13 @@ def gmc():
     args = request.args
 
     if "CPM" in args:
-        client.publish(f"{BASE_TOPIC}/cpm", args["CPM"])
+        client.publish(f"{BASE_TOPIC}/cpm", args["CPM"], retain=True)
     if "ACPM" in args:
-        client.publish(f"{BASE_TOPIC}/acpm", args["ACPM"])
+        client.publish(f"{BASE_TOPIC}/acpm", args["ACPM"], retain=True)
     if "uSV" in args:
-        client.publish(f"{BASE_TOPIC}/usv", args["uSV"])
+        client.publish(f"{BASE_TOPIC}/usv", args["uSV"], retain=True)
     if "dose" in args:
-        client.publish(f"{BASE_TOPIC}/dose", args["dose"])
+        client.publish(f"{BASE_TOPIC}/dose", args["dose"], retain=True)
 
     return jsonify({"status": "ok"}), 200
 
