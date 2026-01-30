@@ -11,13 +11,15 @@
     "80/tcp": 80
   },
   "map": [],
-  "options": {},
-  "schema": {},
+  "options": {
+    "mqtt_host": "core-mosquitto",
+    "mqtt_port": 1883,
+    "mqtt_topic": "gmc500/data"
+  },
+  "schema": {
+    "mqtt_host": "str",
+    "mqtt_port": "int",
+    "mqtt_topic": "str"
+  },
   "homeassistant": ">=2026.1.0"
 }
-
-
-
-
-
-
