@@ -4,8 +4,7 @@ import json
 import os
 
 # ===== MQTT Konfiguration =====
-# Standard: localhost (HA Host)
-MQTT_HOST = os.getenv("MQTT_HOST", "192.168.1.xxx")
+MQTT_HOST = os.getenv("MQTT_HOST", "core-mosquitto")  # HA interner Broker
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "gmc500/data")
 
@@ -15,7 +14,6 @@ app = Flask(__name__)
 # ===== MQTT Client Setup =====
 client = mqtt.Client(client_id="", protocol=mqtt.MQTTv311)
 
-# Optional: Callback bei Verbindung
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print(f"Connected to MQTT broker at {MQTT_HOST}:{MQTT_PORT}")
@@ -24,16 +22,23 @@ def on_connect(client, userdata, flags, rc):
 
 client.on_connect = on_connect
 
-# Verbindung herstellen
 try:
     client.connect(MQTT_HOST, MQTT_PORT, 60)
+    client.loop_start()  # MQTT läuft im Hintergrund
 except Exception as e:
     print(f"ERROR: Could not connect to MQTT broker: {e}")
 
-# ===== Flask Route =====
+# ===== Test Route =====
+@app.route('/')
+def index():
+    return "GMC500 MQTT Bridge läuft!"
+
+# ===== /gmc Route =====
 @app.route('/gmc')
 def gmc():
     data = request.args.to_dict()
+    if not data:
+        return "No data provided", 400
     try:
         client.publish(MQTT_TOPIC, json.dumps(data))
         return "OK"
@@ -42,7 +47,6 @@ def gmc():
 
 # ===== Start Flask =====
 if __name__ == "__main__":
-    # Host 0.0.0.0 → erreichbar von allen Interfaces
     app.run(host="0.0.0.0", port=80, debug=False)
 
 
