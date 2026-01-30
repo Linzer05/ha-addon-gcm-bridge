@@ -7,7 +7,7 @@ import os
 # Standard: localhost (HA Host)
 MQTT_HOST = os.getenv("MQTT_HOST", "192.168.1.xxx")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
-MQTT_TOPIC = os.getenv("MQTT_TOPIC", "gcm500/data")
+MQTT_TOPIC = os.getenv("MQTT_TOPIC", "gmc500/data")
 
 # ===== Flask App =====
 app = Flask(__name__)
@@ -31,8 +31,8 @@ except Exception as e:
     print(f"ERROR: Could not connect to MQTT broker: {e}")
 
 # ===== Flask Route =====
-@app.route('/gcm')
-def gcm():
+@app.route('/gmc')
+def gmc():
     data = request.args.to_dict()
     try:
         client.publish(MQTT_TOPIC, json.dumps(data))
@@ -44,6 +44,7 @@ def gcm():
 if __name__ == "__main__":
     # Host 0.0.0.0 → erreichbar von allen Interfaces
     app.run(host="0.0.0.0", port=80, debug=False)
+
 
 
 
