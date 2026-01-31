@@ -5,20 +5,40 @@ from flask import Flask, request, jsonify
 import paho.mqtt.client as mqtt
 
 # =====================
-# Add-on Options / Konfiguration
+# Optionen laden (HA Add-on Standard)
 # =====================
-MQTT_HOST = os.getenv("ADDON_OPTION_MQTT_HOST", "core-mosquitto")
-MQTT_PORT = int(os.getenv("ADDON_OPTION_MQTT_PORT", "1883"))
-MQTT_USER = os.getenv("ADDON_OPTION_MQTT_USER", "")
-MQTT_PASSWORD = os.getenv("ADDON_OPTION_MQTT_PASSWORD", "")
-BASE_TOPIC = os.getenv("ADDON_OPTION_MQTT_TOPIC", "gmc500/data")
+def load_options():
+    path = "/data/options.json"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[OPTIONS] Could not read {path}: {e}")
+        return {}
+
+opts = load_options()
+
+# Env-Fallback (nur falls jemand es doch setzt)
+def opt(name, default=None):
+    env_key = f"ADDON_OPTION_{name.upper()}"
+    return os.getenv(env_key, opts.get(name, default))
+
+MQTT_HOST = opt("mqtt_host", "core-mosquitto")
+MQTT_PORT = int(opt("mqtt_port", 1883))
+MQTT_USER = opt("mqtt_user", "")
+MQTT_PASSWORD = opt("mqtt_password", "")
+BASE_TOPIC = opt("mqtt_topic", "gmc500/data")
 
 DEVICE_ID = "gmc500"
 DEVICE_NAME = "GMC 500 Geiger Counter"
 DISCOVERY_PREFIX = "homeassistant"
 AVAILABILITY_TOPIC = f"{BASE_TOPIC}/status"
 
-print(f"[BOOT] MQTT host={MQTT_HOST} port={MQTT_PORT} user={'set' if MQTT_USER else 'empty'} topic={BASE_TOPIC}")
+# =====================
+# Debug: effektive Konfiguration sichtbar machen
+# =====================
+print(f"[BOOT] MQTT host={MQTT_HOST} port={MQTT_PORT} user={'set' if MQTT_USER else 'empty'} pass={'set' if MQTT_PASSWORD else 'empty'} topic={BASE_TOPIC}")
+print(f"[BOOT] options.json keys={list(opts.keys())}")
 
 try:
     resolved_ip = socket.gethostbyname(MQTT_HOST)
@@ -61,6 +81,7 @@ def publish_discovery(mqtt_client: mqtt.Client) -> None:
                 "model": "GMC-500"
             }
         }
+
         res = mqtt_client.publish(discovery_topic, json.dumps(payload), qos=0, retain=True)
         print(f"[DISCOVERY] publish {discovery_topic} -> rc={res.rc}")
 
@@ -68,14 +89,16 @@ def publish_discovery(mqtt_client: mqtt.Client) -> None:
 # MQTT Client (Callback API v2)
 # =====================
 client = mqtt.Client(
+    client_id=f"{DEVICE_ID}_bridge",
     protocol=mqtt.MQTTv311,
     callback_api_version=mqtt.CallbackAPIVersion.VERSION2
 )
-
 client.enable_logger()
 
 if MQTT_USER and MQTT_PASSWORD:
     client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+else:
+    print("[MQTT] WARNING: mqtt_user/mqtt_password empty -> will connect without auth")
 
 client.will_set(AVAILABILITY_TOPIC, payload="offline", qos=1, retain=True)
 
@@ -87,6 +110,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
     else:
         print(f"[MQTT] Connect failed, reason_code={reason_code}")
 
+# v2 signature: (client, userdata, disconnect_flags, reason_code, properties)
 def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
     print(f"[MQTT] Disconnected, reason_code={reason_code}")
 
