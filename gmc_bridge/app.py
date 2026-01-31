@@ -25,7 +25,7 @@ MQTT_PASSWORD = opts.get("mqtt_password", "")
 BASE_TOPIC = opts.get("mqtt_topic", "gmc500/data")
 
 DEVICE_ID = "gmc500"
-DEVICE_NAME = "GMC 500 Geiger Counter"
+DEVICE_NAME = "GMC-500"  # Schritt 2: kurzer Gerätename
 DISCOVERY_PREFIX = "homeassistant"
 AVAILABILITY_TOPIC = f"{BASE_TOPIC}/status"
 
@@ -47,11 +47,36 @@ app = Flask(__name__)
 # Home Assistant Discovery
 # =====================
 def publish_discovery(mqtt_client: mqtt.Client) -> None:
+    # Schritt 2: schönere Namen + klare Einheiten
     sensors = {
-        "cpm": {"name": "CPM", "unit": "CPM", "icon": "mdi:radioactive", "topic": f"{BASE_TOPIC}/cpm", "state_class": "measurement"},
-        "acpm": {"name": "Avg CPM", "unit": "CPM", "icon": "mdi:chart-line", "topic": f"{BASE_TOPIC}/acpm", "state_class": "measurement"},
-        "usv": {"name": "µSv/h", "unit": "µSv/h", "icon": "mdi:radioactive-circle", "topic": f"{BASE_TOPIC}/usv", "state_class": "measurement"},
-        "dose": {"name": "Dose", "unit": "µSv", "icon": "mdi:counter", "topic": f"{BASE_TOPIC}/dose", "state_class": "total_increasing"},
+        "cpm": {
+            "name": "CPM",
+            "unit": "CPM",
+            "icon": "mdi:radioactive",
+            "topic": f"{BASE_TOPIC}/cpm",
+            "state_class": "measurement",
+        },
+        "acpm": {
+            "name": "Avg CPM",
+            "unit": "CPM",
+            "icon": "mdi:chart-line",
+            "topic": f"{BASE_TOPIC}/acpm",
+            "state_class": "measurement",
+        },
+        "usv": {
+            "name": "µSv/h",
+            "unit": "µSv/h",
+            "icon": "mdi:radioactive-circle",
+            "topic": f"{BASE_TOPIC}/usv",
+            "state_class": "measurement",
+        },
+        "dose": {
+            "name": "Total Dose",
+            "unit": "µSv",
+            "icon": "mdi:counter",
+            "topic": f"{BASE_TOPIC}/dose",
+            "state_class": "total_increasing",
+        },
     }
 
     device_block = {
@@ -88,77 +113,10 @@ client = mqtt.Client(
     callback_api_version=mqtt.CallbackAPIVersion.VERSION2
 )
 
-# Wenn du später wieder viel Debug willst:
+# Wenn du Debug willst, aktivieren:
 # client.enable_logger()
 
 if MQTT_USER and MQTT_PASSWORD:
     client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
 else:
-    print("[MQTT] WARNING: mqtt_user/mqtt_password empty -> will connect without auth")
-
-client.will_set(AVAILABILITY_TOPIC, payload="offline", qos=1, retain=True)
-
-# v2: (client, userdata, connect_flags, reason_code, properties)
-def on_connect(client, userdata, connect_flags, reason_code, properties):
-    print(f"[MQTT] on_connect reason_code={reason_code}")
-    if reason_code == 0:
-        print(f"[MQTT] Connected to {MQTT_HOST}:{MQTT_PORT}")
-        client.publish(AVAILABILITY_TOPIC, "online", qos=1, retain=True)
-        publish_discovery(client)
-    else:
-        print(f"[MQTT] Connect failed: {reason_code}")
-
-# v2: (client, userdata, disconnect_flags, reason_code, properties)
-def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
-    print(f"[MQTT] Disconnected: {reason_code}")
-
-client.on_connect = on_connect
-client.on_disconnect = on_disconnect
-
-# Wenn ein Thread crasht, sehen wir’s im Log
-def thread_excepthook(args):
-    print(f"[THREAD-EXC] in {args.thread.name}: {args.exc_type.__name__}: {args.exc_value}")
-
-threading.excepthook = thread_excepthook
-
-client.reconnect_delay_set(min_delay=1, max_delay=60)
-
-try:
-    print("[MQTT] connecting...")
-    client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
-    print("[MQTT] connect() returned, starting loop")
-    client.loop_start()
-except Exception as e:
-    print(f"[MQTT] connect() exception: {e}")
-
-# =====================
-# Helper: Zahlen sauber publishen
-# =====================
-def publish_value(topic: str, value_str: str):
-    # Payload als String ist am kompatibelsten, HA kann Zahlen daraus machen.
-    # (Wenn du zwingend numeric willst, können wir das später gezielt ändern.)
-    client.publish(topic, value_str, retain=True)
-
-# =====================
-# HTTP Endpoint /gmc
-# =====================
-@app.route("/gmc", methods=["GET"])
-def gmc():
-    args = request.args
-
-    if "CPM" in args:
-        publish_value(f"{BASE_TOPIC}/cpm", args["CPM"])
-    if "ACPM" in args:
-        publish_value(f"{BASE_TOPIC}/acpm", args["ACPM"])
-    if "uSV" in args:
-        publish_value(f"{BASE_TOPIC}/usv", args["uSV"])
-    if "dose" in args:
-        publish_value(f"{BASE_TOPIC}/dose", args["dose"])
-
-    return jsonify({"status": "ok"}), 200
-
-# =====================
-# Main
-# =====================
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=80)
+    print("[MQTT] WARNING: mqtt_user/mqtt_password emp
