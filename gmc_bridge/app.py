@@ -1,10 +1,11 @@
 import json
-import time
+import socket
+import threading
 from flask import Flask, request, jsonify
 import paho.mqtt.client as mqtt
 
 # =====================
-# Optionen (HA Add-on Standard)
+# Optionen laden (HA Add-on Standard)
 # =====================
 def load_options():
     path = "/data/options.json"
@@ -12,7 +13,7 @@ def load_options():
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        print(f"[ERROR] Could not read {path}: {e}")
+        print(f"[OPTIONS] Could not read {path}: {e}")
         return {}
 
 opts = load_options()
@@ -28,10 +29,17 @@ DEVICE_NAME = "GMC 500 Geiger Counter"
 DISCOVERY_PREFIX = "homeassistant"
 AVAILABILITY_TOPIC = f"{BASE_TOPIC}/status"
 
-print(f"[BOOT] host={MQTT_HOST} port={MQTT_PORT} user={'set' if MQTT_USER else 'empty'} topic={BASE_TOPIC}")
+print(f"[BOOT] MQTT host={MQTT_HOST} port={MQTT_PORT} user={'set' if MQTT_USER else 'empty'} pass={'set' if MQTT_PASSWORD else 'empty'} topic={BASE_TOPIC}")
+print(f"[BOOT] options.json keys={list(opts.keys())}")
+
+try:
+    resolved_ip = socket.gethostbyname(MQTT_HOST)
+    print(f"[DNS] {MQTT_HOST} -> {resolved_ip}")
+except Exception as e:
+    print(f"[DNS] resolve failed for {MQTT_HOST}: {e}")
 
 # =====================
-# Flask
+# Flask App
 # =====================
 app = Flask(__name__)
 
@@ -40,34 +48,10 @@ app = Flask(__name__)
 # =====================
 def publish_discovery(mqtt_client: mqtt.Client) -> None:
     sensors = {
-        "cpm": {
-            "name": "CPM",
-            "unit": "CPM",
-            "icon": "mdi:radioactive",
-            "topic": f"{BASE_TOPIC}/cpm",
-            "state_class": "measurement",
-        },
-        "acpm": {
-            "name": "Avg CPM",
-            "unit": "CPM",
-            "icon": "mdi:chart-line",
-            "topic": f"{BASE_TOPIC}/acpm",
-            "state_class": "measurement",
-        },
-        "usv": {
-            "name": "µSv/h",
-            "unit": "µSv/h",
-            "icon": "mdi:radioactive-circle",
-            "topic": f"{BASE_TOPIC}/usv",
-            "state_class": "measurement",
-        },
-        "dose": {
-            "name": "Dose",
-            "unit": "µSv",
-            "icon": "mdi:counter",
-            "topic": f"{BASE_TOPIC}/dose",
-            "state_class": "total_increasing",
-        },
+        "cpm": {"name": "CPM", "unit": "CPM", "icon": "mdi:radioactive", "topic": f"{BASE_TOPIC}/cpm", "state_class": "measurement"},
+        "acpm": {"name": "Avg CPM", "unit": "CPM", "icon": "mdi:chart-line", "topic": f"{BASE_TOPIC}/acpm", "state_class": "measurement"},
+        "usv": {"name": "µSv/h", "unit": "µSv/h", "icon": "mdi:radioactive-circle", "topic": f"{BASE_TOPIC}/usv", "state_class": "measurement"},
+        "dose": {"name": "Dose", "unit": "µSv", "icon": "mdi:counter", "topic": f"{BASE_TOPIC}/dose", "state_class": "total_increasing"},
     }
 
     device_block = {
@@ -96,12 +80,85 @@ def publish_discovery(mqtt_client: mqtt.Client) -> None:
     print("[MQTT] Discovery published")
 
 # =====================
-# MQTT
+# MQTT Client (Callback API v2)
 # =====================
 client = mqtt.Client(
     client_id=f"{DEVICE_ID}_bridge",
     protocol=mqtt.MQTTv311,
-    callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+    callback_api_version=mqtt.CallbackAPIVersion.VERSION2
 )
 
-# Optional: paho internal logging (lass aus für
+# Wenn du später wieder viel Debug willst:
+# client.enable_logger()
+
+if MQTT_USER and MQTT_PASSWORD:
+    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+else:
+    print("[MQTT] WARNING: mqtt_user/mqtt_password empty -> will connect without auth")
+
+client.will_set(AVAILABILITY_TOPIC, payload="offline", qos=1, retain=True)
+
+# v2: (client, userdata, connect_flags, reason_code, properties)
+def on_connect(client, userdata, connect_flags, reason_code, properties):
+    print(f"[MQTT] on_connect reason_code={reason_code}")
+    if reason_code == 0:
+        print(f"[MQTT] Connected to {MQTT_HOST}:{MQTT_PORT}")
+        client.publish(AVAILABILITY_TOPIC, "online", qos=1, retain=True)
+        publish_discovery(client)
+    else:
+        print(f"[MQTT] Connect failed: {reason_code}")
+
+# v2: (client, userdata, disconnect_flags, reason_code, properties)
+def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+    print(f"[MQTT] Disconnected: {reason_code}")
+
+client.on_connect = on_connect
+client.on_disconnect = on_disconnect
+
+# Wenn ein Thread crasht, sehen wir’s im Log
+def thread_excepthook(args):
+    print(f"[THREAD-EXC] in {args.thread.name}: {args.exc_type.__name__}: {args.exc_value}")
+
+threading.excepthook = thread_excepthook
+
+client.reconnect_delay_set(min_delay=1, max_delay=60)
+
+try:
+    print("[MQTT] connecting...")
+    client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
+    print("[MQTT] connect() returned, starting loop")
+    client.loop_start()
+except Exception as e:
+    print(f"[MQTT] connect() exception: {e}")
+
+# =====================
+# Helper: Zahlen sauber publishen
+# =====================
+def publish_value(topic: str, value_str: str):
+    # Payload als String ist am kompatibelsten, HA kann Zahlen daraus machen.
+    # (Wenn du zwingend numeric willst, können wir das später gezielt ändern.)
+    client.publish(topic, value_str, retain=True)
+
+# =====================
+# HTTP Endpoint /gmc
+# =====================
+@app.route("/gmc", methods=["GET"])
+def gmc():
+    args = request.args
+
+    if "CPM" in args:
+        publish_value(f"{BASE_TOPIC}/cpm", args["CPM"])
+    if "ACPM" in args:
+        publish_value(f"{BASE_TOPIC}/acpm", args["ACPM"])
+    if "uSV" in args:
+        publish_value(f"{BASE_TOPIC}/usv", args["uSV"])
+    if "dose" in args:
+        publish_value(f"{BASE_TOPIC}/dose", args["dose"])
+
+    return jsonify({"status": "ok"}), 200
+
+# =====================
+# Main
+# =====================
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=80)
