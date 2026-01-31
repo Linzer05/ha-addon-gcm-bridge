@@ -1,11 +1,13 @@
 import json
 import os
 import socket
+import threading
+import time
 from flask import Flask, request, jsonify
 import paho.mqtt.client as mqtt
 
 # =====================
-# Optionen laden (HA Add-on Standard)
+# Optionen laden
 # =====================
 def load_options():
     path = "/data/options.json"
@@ -18,7 +20,6 @@ def load_options():
 
 opts = load_options()
 
-# Env-Fallback (nur falls jemand es doch setzt)
 def opt(name, default=None):
     env_key = f"ADDON_OPTION_{name.upper()}"
     return os.getenv(env_key, opts.get(name, default))
@@ -34,9 +35,6 @@ DEVICE_NAME = "GMC 500 Geiger Counter"
 DISCOVERY_PREFIX = "homeassistant"
 AVAILABILITY_TOPIC = f"{BASE_TOPIC}/status"
 
-# =====================
-# Debug: effektive Konfiguration sichtbar machen
-# =====================
 print(f"[BOOT] MQTT host={MQTT_HOST} port={MQTT_PORT} user={'set' if MQTT_USER else 'empty'} pass={'set' if MQTT_PASSWORD else 'empty'} topic={BASE_TOPIC}")
 print(f"[BOOT] options.json keys={list(opts.keys())}")
 
@@ -102,7 +100,9 @@ else:
 
 client.will_set(AVAILABILITY_TOPIC, payload="offline", qos=1, retain=True)
 
-def on_connect(client, userdata, flags, reason_code, properties):
+# v2: (client, userdata, connect_flags, reason_code, properties)
+def on_connect(client, userdata, connect_flags, reason_code, properties):
+    print(f"[MQTT] on_connect called, reason_code={reason_code}")
     if reason_code == 0:
         print(f"[MQTT] Connected to {MQTT_HOST}:{MQTT_PORT}")
         client.publish(AVAILABILITY_TOPIC, "online", qos=1, retain=True)
@@ -110,7 +110,10 @@ def on_connect(client, userdata, flags, reason_code, properties):
     else:
         print(f"[MQTT] Connect failed, reason_code={reason_code}")
 
-# v2 signature: (client, userdata, disconnect_flags, reason_code, properties)
+def on_connect_fail(client, userdata):
+    print("[MQTT] on_connect_fail called")
+
+# v2: (client, userdata, disconnect_flags, reason_code, properties)
 def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
     print(f"[MQTT] Disconnected, reason_code={reason_code}")
 
@@ -118,8 +121,15 @@ def on_log(client, userdata, level, buf):
     print(f"[MQTT-LOG] {buf}")
 
 client.on_connect = on_connect
+client.on_connect_fail = on_connect_fail
 client.on_disconnect = on_disconnect
 client.on_log = on_log
+
+# If something crashes in any thread, print it
+def thread_excepthook(args):
+    print(f"[THREAD-EXC] in {args.thread.name}: {args.exc_type.__name__}: {args.exc_value}")
+
+threading.excepthook = thread_excepthook
 
 try:
     print("[MQTT] connecting...")
