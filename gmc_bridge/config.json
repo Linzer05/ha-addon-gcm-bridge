@@ -24,13 +24,12 @@
     "mqtt_password": "str",
     "mqtt_topic": "str"
   },
-  "homeassistant": "2026.1.0"
-},
  "schema": {
   "mqtt_host": "str",
   "mqtt_port": "int",
   "mqtt_user": "str",
   "mqtt_password": "password",
   "mqtt_topic": "str"
+},
+  "homeassistant": "2026.1.0"
 }
-
