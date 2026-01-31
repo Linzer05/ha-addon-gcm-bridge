@@ -11,7 +11,7 @@
     "80/tcp": 80
   },
   "options": {
-    "mqtt_host": "homeassistant",
+    "mqtt_host": "core-mosquitto",
     "mqtt_port": 1883,
     "mqtt_user": "",
     "mqtt_password": "",
@@ -25,4 +25,12 @@
     "mqtt_topic": "str"
   },
   "homeassistant": "2026.1.0"
+},
+ "schema": {
+  "mqtt_host": "str",
+  "mqtt_port": "int",
+  "mqtt_user": "str",
+  "mqtt_password": "password",
+  "mqtt_topic": "str"
 }
+
